@@ -38,6 +38,18 @@
 #include "parser.hxx"
 #include "core/SourceFile.h"
 #include <assert.h>
+
+// Windows: get correct declarations from headers; avoid redeclaring _isatty.
+#if defined(_WIN32)
+#  include <io.h>
+#  ifdef _MSC_VER
+#    define isatty  _isatty
+#    define strdup  _strdup
+#    define fileno  _fileno
+#  endif
+#else
+#  include <unistd.h> // isatty on POSIX
+#endif
 #include <boost/lexical_cast.hpp>
 #include <filesystem>
 namespace fs = std::filesystem;

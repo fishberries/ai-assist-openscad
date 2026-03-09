@@ -687,14 +687,18 @@ if(ENABLE_CAIRO STREQUAL "AUTO")
   # AUTO: try to find, fallback gracefully if not found
   if (MSVC)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(CAIRO REQUIRED cairo)
+    pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
   else()
     find_package(Cairo 1.14 QUIET)
   endif()
   if(CAIRO_VERSION OR CAIRO_FOUND)
     message(STATUS "Cairo: ${CAIRO_VERSION}")
     target_include_directories(OpenSCADLibInternal SYSTEM PUBLIC ${CAIRO_INCLUDE_DIRS})
-    target_link_libraries(OpenSCADLibInternal PUBLIC ${CAIRO_LIBRARIES})
+    if (MSVC AND TARGET PkgConfig::CAIRO)
+      target_link_libraries(OpenSCADLibInternal PUBLIC PkgConfig::CAIRO)
+    else()
+      target_link_libraries(OpenSCADLibInternal PUBLIC ${CAIRO_LIBRARIES})
+    endif()
     target_compile_definitions(OpenSCADLibInternal PUBLIC ENABLE_CAIRO)
   else()
     message(STATUS "Cairo: disabled (not found)")
@@ -703,13 +707,17 @@ elseif(ENABLE_CAIRO)
   # Explicit ON: fail if not found
   if (MSVC)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(CAIRO REQUIRED cairo)
+    pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
   else()
     find_package(Cairo 1.14 REQUIRED)
   endif()
   message(STATUS "Cairo: ${CAIRO_VERSION}")
   target_include_directories(OpenSCADLibInternal SYSTEM PUBLIC ${CAIRO_INCLUDE_DIRS})
-  target_link_libraries(OpenSCADLibInternal PUBLIC ${CAIRO_LIBRARIES})
+  if (MSVC AND TARGET PkgConfig::CAIRO)
+    target_link_libraries(OpenSCADLibInternal PUBLIC PkgConfig::CAIRO)
+  else()
+    target_link_libraries(OpenSCADLibInternal PUBLIC ${CAIRO_LIBRARIES})
+  endif()
   target_compile_definitions(OpenSCADLibInternal PUBLIC ENABLE_CAIRO)
 else()
   # OFF: explicitly disabled
@@ -744,6 +752,10 @@ if(USE_GLAD)
   target_compile_definitions(OpenSCADLibInternal PUBLIC USE_GLAD)
 else()
   target_compile_definitions(OpenSCADLibInternal PUBLIC USE_GLEW)
+endif()
+
+if(WIN32)
+  target_link_libraries(OpenSCADLibInternal PUBLIC crypt32)
 endif()
 
 if (MXECROSS)
@@ -1283,6 +1295,8 @@ set(GUI_SOURCES
   ${GUI_SOURCES}
   src/openscad_gui.cc
   src/gui/AutoUpdater.cc
+  src/gui/AICodeGenerator.cc
+  src/gui/AIPromptPanel.cc
   src/gui/CGALWorker.cc
   src/gui/ViewportControl.cc
   src/gui/Console.cc
@@ -1303,6 +1317,7 @@ set(GUI_SOURCES
   src/gui/Measurement.cc
   src/gui/Animate.cc
   src/gui/FontList.cc
+  src/gui/GoogleOAuthManager.cc
   src/gui/ColorList.cc
   src/gui/ColorLabel.cc
   src/gui/ColorLayout.cc
@@ -1314,6 +1329,7 @@ set(GUI_SOURCES
   src/gui/Preferences.cc
   src/gui/PrintInitDialog.cc
   src/gui/PrintService.cc
+  src/gui/SecretStorage.cc
   src/gui/ExternalToolInterface.cc
   src/gui/ProgressWidget.cc
   src/gui/RubberBandManager.cc
@@ -1359,6 +1375,8 @@ set(GUI_HEADERS
     src/gui/Animate.h
     src/gui/AppleEvents.h
     src/gui/AutoUpdater.h
+    src/gui/AICodeGenerator.h
+    src/gui/AIPromptPanel.h
     src/gui/CGALWorker.h
     src/gui/Console.h
     src/gui/Dock.h
@@ -1370,6 +1388,7 @@ set(GUI_HEADERS
     src/gui/ExportSvgDialog.h
     src/gui/OctoPrintApiKeyDialog.h
     src/gui/FontList.h
+    src/gui/GoogleOAuthManager.h
     src/gui/ColorList.h
     src/gui/ColorLabel.h
     src/gui/ColorLayout.h
@@ -1570,7 +1589,58 @@ endif()
 
 target_sources(OpenSCADLibInternal PUBLIC ${RESOURCE_FILES})
 target_sources(OpenSCADLibInternal PRIVATE ${Sources})
-find_program(SHELL_EXE NAMES sh bash $ENV{SHELL})
+if(WIN32)
+  find_program(SHELL_EXE NAMES bash.exe sh.exe
+    PATHS
+      "C:/Program Files/Git/bin"
+      "C:/Program Files/Git/usr/bin")
+endif()
+if(NOT SHELL_EXE)
+  find_program(SHELL_EXE NAMES sh bash $ENV{SHELL})
+endif()
+if(WIN32 AND USE_QT6 AND NOT HEADLESS)
+  set(QT_PLUGIN_SOURCE_DIR "$<TARGET_FILE_DIR:Qt6::Core>/../Qt6/plugins")
+  find_file(OPENSSL_SSL_RUNTIME
+    NAMES libssl-3-x64.dll
+    PATHS ${CMAKE_PREFIX_PATH}
+    PATH_SUFFIXES bin
+    NO_DEFAULT_PATH)
+  find_file(OPENSSL_CRYPTO_RUNTIME
+    NAMES libcrypto-3-x64.dll
+    PATHS ${CMAKE_PREFIX_PATH}
+    PATH_SUFFIXES bin
+    NO_DEFAULT_PATH)
+  set(OPENSSL_RUNTIME_DEPLOY_COMMANDS)
+  if(OPENSSL_SSL_RUNTIME)
+    list(APPEND OPENSSL_RUNTIME_DEPLOY_COMMANDS
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${OPENSSL_SSL_RUNTIME}" "$<TARGET_FILE_DIR:OpenSCADExe>")
+  endif()
+  if(OPENSSL_CRYPTO_RUNTIME)
+    list(APPEND OPENSSL_RUNTIME_DEPLOY_COMMANDS
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${OPENSSL_CRYPTO_RUNTIME}" "$<TARGET_FILE_DIR:OpenSCADExe>")
+  endif()
+  add_custom_command(TARGET OpenSCADExe POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:Qt6::Svg>" "$<TARGET_FILE_DIR:OpenSCADExe>"
+      ${OPENSSL_RUNTIME_DEPLOY_COMMANDS}
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/generic" "$<TARGET_FILE_DIR:OpenSCADExe>/generic"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/iconengines" "$<TARGET_FILE_DIR:OpenSCADExe>/iconengines"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/imageformats" "$<TARGET_FILE_DIR:OpenSCADExe>/imageformats"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/multimedia" "$<TARGET_FILE_DIR:OpenSCADExe>/multimedia"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/networkinformation" "$<TARGET_FILE_DIR:OpenSCADExe>/networkinformation"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/platforms" "$<TARGET_FILE_DIR:OpenSCADExe>/platforms"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/styles" "$<TARGET_FILE_DIR:OpenSCADExe>/styles"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${QT_PLUGIN_SOURCE_DIR}/tls" "$<TARGET_FILE_DIR:OpenSCADExe>/tls"
+      COMMENT "Deploying Qt runtime plugins")
+  add_custom_command(TARGET OpenSCADExe POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/color-schemes" "$<TARGET_FILE_DIR:OpenSCADExe>/color-schemes"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/examples" "$<TARGET_FILE_DIR:OpenSCADExe>/examples"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/fonts" "$<TARGET_FILE_DIR:OpenSCADExe>/fonts"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/libraries" "$<TARGET_FILE_DIR:OpenSCADExe>/libraries"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/locale" "$<TARGET_FILE_DIR:OpenSCADExe>/locale"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/shaders" "$<TARGET_FILE_DIR:OpenSCADExe>/shaders"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/templates" "$<TARGET_FILE_DIR:OpenSCADExe>/templates"
+      COMMENT "Deploying OpenSCAD runtime resources")
+endif()
 add_custom_command(TARGET OpenSCADExe POST_BUILD
     COMMAND "${SHELL_EXE}"
     ARGS "${CMAKE_CURRENT_LIST_DIR}/scripts/translation-make.sh" "${SUFFIX_WITH_DASH}"

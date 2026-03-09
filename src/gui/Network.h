@@ -112,6 +112,12 @@ ResultType NetworkRequest<ResultType>::execute(const NetworkRequest::setup_func_
                                                const NetworkRequest::transform_func_t& transform_func,
                                                const NetworkRequest::error_func_t& error_func)
 {
+  if (url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 &&
+      !QSslSocket::supportsSsl()) {
+    throw NetworkException{QNetworkReply::SslHandshakeFailedError,
+                           _("TLS support is unavailable. Check that the Qt TLS backend and OpenSSL runtime DLLs are deployed.")};
+  }
+
   QNetworkRequest request(url);
   request.setHeader(QNetworkRequest::UserAgentHeader,
                     QString::fromStdString(PlatformUtils::user_agent()));

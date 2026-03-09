@@ -68,6 +68,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QUrl>
+#include <QVariant>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <algorithm>
@@ -113,6 +114,7 @@
 #include "glview/preview/CSGTreeNormalizer.h"
 #include "glview/preview/ThrownTogetherRenderer.h"
 #include "gui/AboutDialog.h"
+#include "gui/AIPromptPanel.h"
 #include "gui/CGALWorker.h"
 #include "gui/ColorList.h"
 #include "gui/Dock.h"
@@ -228,6 +230,26 @@ QAction *findAction(const QList<QAction *>& actions, const std::string& name)
 void fileExportedMessage(const QString& format, const QString& filename)
 {
   LOG("%1$s export finished: %2$s", format.toUtf8().constData(), filename.toUtf8().constData());
+}
+
+QString promptForExportPath(QWidget *parent, const QString& title, const QString& initialPath,
+                            const QString& filter, const QString& defaultSuffix)
+{
+  QFileDialog dialog(parent, title, initialPath, filter);
+  dialog.setAcceptMode(QFileDialog::AcceptSave);
+  dialog.setFileMode(QFileDialog::AnyFile);
+  dialog.setDefaultSuffix(defaultSuffix);
+  dialog.selectNameFilter(filter);
+
+  if (dialog.exec() != QDialog::Accepted) return {};
+
+  const QString selectedPath = dialog.selectedFiles().value(0).trimmed();
+  if (selectedPath.isEmpty()) return {};
+
+  if (QFileInfo(selectedPath).suffix().isEmpty() && !defaultSuffix.isEmpty()) {
+    return QString("%1.%2").arg(selectedPath, defaultSuffix);
+  }
+  return selectedPath;
 }
 
 void removeExportActions(QToolBar *toolbar, QAction *action)
@@ -2443,8 +2465,8 @@ void MainWindow::actionExport(unsigned int dim, ExportInfo& exportInfo)
   if (!canExport(dim)) return;
 
   auto title = QString(_("Export %1 File")).arg(type_name);
-  auto filter = QString(_("%1 Files (*%2)")).arg(type_name, suffix);
-  auto exportFilename = QFileDialog::getSaveFileName(this, title, exportPath(suffix), filter);
+  auto filter = QString(_("%1 Files (*.%2)")).arg(type_name, suffix);
+  auto exportFilename = promptForExportPath(this, title, exportPath(suffix), filter, suffix);
   auto guard2 = scopedSetCurrentOutput();
   if (exportFilename.isEmpty()) {
     return;
@@ -2491,8 +2513,8 @@ void MainWindow::actionExportFileFormat(int fmt)
       return;
     }
     const QString suffix = "csg";
-    auto csg_filename = QFileDialog::getSaveFileName(this, _("Export CSG File"), exportPath(suffix),
-                                                     _("CSG Files (*.csg)"));
+    auto csg_filename =
+      promptForExportPath(this, _("Export CSG File"), exportPath(suffix), _("CSG Files (*.csg)"), suffix);
 
     if (csg_filename.isEmpty()) {
       return;
@@ -2515,7 +2537,7 @@ void MainWindow::actionExportFileFormat(int fmt)
     qglview->grabFrame();
     const QString suffix = "png";
     auto img_filename =
-      QFileDialog::getSaveFileName(this, _("Export Image"), exportPath(suffix), _("PNG Files (*.png)"));
+      promptForExportPath(this, _("Export Image"), exportPath(suffix), _("PNG Files (*.png)"), suffix);
     if (!img_filename.isEmpty()) {
       const bool saveResult = qglview->save(img_filename.toStdString().c_str());
       if (saveResult) {
@@ -3054,6 +3076,9 @@ void MainWindow::onTabManagerEditorChanged(EditorInterface *newEditor)
 {
   activeEditor = newEditor;
 
+  if (aiPromptPanel != nullptr) {
+    aiPromptPanel->refreshContextState();
+  }
   if (newEditor == nullptr) return;
 
   parameterDock->setWidget(newEditor->parameterWidget);
@@ -3460,6 +3485,7 @@ void MainWindow::setupConsole()
 
   consoleOutputRaw(
     QString("<b>OpenSCAD %1</b>").arg(QString::fromStdString(std::string(openscad_versionnumber))));
+  consoleOutputRaw(QString("<p><b>Fishberries AI build</b></p>"));
   consoleOutputRaw(QString("<a href=\"https://www.openscad.org/\">https://www.openscad.org/</a><br>"));
   consoleOutputRaw(
     QString("<p>Copyright (C) 2009-2026 The OpenSCAD Developers</p>"
@@ -3487,7 +3513,70 @@ void MainWindow::setupEditor(const QStringList& filenames)
 {
   tabManager = new TabManager(this, filenames.isEmpty() ? QString() : filenames[0]);
   activeEditor = tabManager->editor;
-  editorDockContents->layout()->addWidget(tabManager->getTabContent());
+  auto *editorAreaSplitter = new QSplitter(Qt::Horizontal, editorDockContents);
+  editorAreaSplitter->setHandleWidth(10);
+  editorAreaSplitter->setChildrenCollapsible(false);
+  editorAreaSplitter->setOpaqueResize(true);
+
+  auto *tabContent = tabManager->getTabContent();
+  tabContent->setMinimumWidth(420);
+  editorAreaSplitter->addWidget(tabContent);
+  aiPromptPanel = new AIPromptPanel(this, editorAreaSplitter);
+  editorAreaSplitter->addWidget(aiPromptPanel);
+  editorAreaSplitter->setStretchFactor(0, 5);
+  editorAreaSplitter->setStretchFactor(1, 1);
+  editorAreaSplitter->setCollapsible(0, false);
+  editorAreaSplitter->setCollapsible(1, true);
+
+  {
+    const QSettingsCached settings;
+    QList<int> splitterSizes;
+    for (const auto& sizeValue : settings.value("ai/editorSplitterSizes").toList()) {
+      splitterSizes << sizeValue.toInt();
+    }
+    if (splitterSizes.size() == 2) {
+      editorAreaSplitter->setSizes(splitterSizes);
+    } else {
+      editorAreaSplitter->setSizes({1200, 320});
+    }
+  }
+
+  auto clampEditorSplitter = [editorAreaSplitter]() {
+    const QList<int> sizes = editorAreaSplitter->sizes();
+    if (sizes.size() != 2) return;
+
+    const int total = sizes[0] + sizes[1];
+    if (total <= 0) return;
+
+    const int minAiWidth = qMin(260, qMax(180, total / 4));
+    const int maxAiWidth = qMin(420, qMax(minAiWidth, total / 3));
+    int aiWidth = qBound(minAiWidth, sizes[1], maxAiWidth);
+    int editorWidth = total - aiWidth;
+
+    const int preferredEditorWidth = qMin(700, qMax(420, (total * 2) / 3));
+    if (editorWidth < preferredEditorWidth) {
+      editorWidth = preferredEditorWidth;
+      aiWidth = total - editorWidth;
+    }
+
+    if (aiWidth < minAiWidth) {
+      aiWidth = minAiWidth;
+      editorWidth = total - aiWidth;
+    }
+
+    editorAreaSplitter->setSizes({editorWidth, aiWidth});
+  };
+  clampEditorSplitter();
+  QTimer::singleShot(0, this, clampEditorSplitter);
+
+  connect(editorAreaSplitter, &QSplitter::splitterMoved, this, [editorAreaSplitter]() {
+    QSettingsCached settings;
+    QVariantList splitterSizes;
+    for (const auto size : editorAreaSplitter->sizes()) splitterSizes << size;
+    settings.setValue("ai/editorSplitterSizes", splitterSizes);
+  });
+
+  editorDockContents->layout()->addWidget(editorAreaSplitter);
 
   connect(this->fileActionNew, &QAction::triggered, tabManager, &TabManager::actionNew);
   connect(this->fileActionClose, &QAction::triggered, tabManager, &TabManager::closeCurrentTab);

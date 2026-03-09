@@ -42,7 +42,6 @@
 
 #include <QImage>
 #include <QOpenGLWidget>
-#include <QSurfaceFormat>
 #include <QWidget>
 #include <iostream>
 #include <QApplication>
@@ -73,23 +72,8 @@
 #include "gui/qt-obsolete.h"
 #include "gui/Measurement.h"
 
-namespace {
-
-QSurfaceFormat compatibleWidgetFormat()
-{
-  auto format = QSurfaceFormat::defaultFormat();
-  format.setRenderableType(QSurfaceFormat::OpenGL);
-  format.setProfile(QSurfaceFormat::CompatibilityProfile);
-  if (format.depthBufferSize() < 24) format.setDepthBufferSize(24);
-  if (format.stencilBufferSize() < 8) format.setStencilBufferSize(8);
-  return format;
-}
-
-}  // namespace
-
 QGLView::QGLView(QWidget *parent) : QOpenGLWidget(parent)
 {
-  setFormat(compatibleWidgetFormat());
   init();
 }
 

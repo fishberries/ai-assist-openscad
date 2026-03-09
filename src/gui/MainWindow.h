@@ -47,6 +47,7 @@ class BuiltinContext;
 class CGALWorker;
 class CSGNode;
 class CSGProducts;
+class AIPromptPanel;
 class FontListDialog;
 class LibraryInfoDialog;
 class Preferences;
@@ -245,6 +246,7 @@ private:
 
   LibraryInfoDialog *libraryInfoDialog{nullptr};
   FontListDialog *fontListDialog{nullptr};
+  AIPromptPanel *aiPromptPanel{nullptr};
   QSignalMapper *exportFormatMapper;
 
 public slots:

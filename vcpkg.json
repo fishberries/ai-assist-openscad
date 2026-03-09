@@ -2,8 +2,24 @@
   "name": "openscad",
   "version-string": "1.0.0",
   "dependencies": [
+    "boost-assign",
+    "boost-dll",
+    "boost-nowide",
     "boost-regex",
     "boost-program-options",
+    {
+      "name": "qtbase",
+      "features": [
+        "concurrent",
+        "gui",
+        "network",
+        "opengl",
+        "widgets"
+      ]
+    },
+    "qt5compat",
+    "qtmultimedia",
+    "qtsvg",
     "eigen3",
     "cgal",
     "cairo",
@@ -12,6 +28,7 @@
     "double-conversion",
     "opencsg",
     "libxml2",
+    "lib3mf",
     "libzip",
     "glib",
     "gperf",
