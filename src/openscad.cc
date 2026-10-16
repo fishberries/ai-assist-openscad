@@ -460,7 +460,8 @@ int do_export(const CommandLine& cmd, const RenderVariables& render_variables, F
     with_output(cmd.is_stdout, filename_str,
                 [&root_file, &fpath](std::ostream& stream) { export_param(root_file, fpath, stream); });
   } else if (export_format == FileFormat::TERM) {
-    CSGTreeEvaluator csgRenderer(tree);
+    GeometryEvaluator geomevaluator(tree);
+    CSGTreeEvaluator csgRenderer(tree, &geomevaluator);
     auto root_raw_term = csgRenderer.buildCSGTree(*root_node);
     with_output(cmd.is_stdout, filename_str, [root_raw_term](std::ostream& stream) {
       if (!root_raw_term || root_raw_term->isEmptySet()) {
