@@ -93,6 +93,7 @@ Containers& containers()
     add_item(*containers, {FileFormat::PARAM, "param", "param", "param"});
     add_item(*containers, {FileFormat::AST, "ast", "ast", "AST"});
     add_item(*containers, {FileFormat::TERM, "term", "term", "term"});
+    add_item(*containers, {FileFormat::CSGTREE, "csgtree", "csgtree", "CSG tree (evaluated leaves)"});
     add_item(*containers, {FileFormat::ECHO, "echo", "echo", "echo"});
     add_item(*containers, {FileFormat::PNG, "png", "png", "PNG"});
     add_item(*containers, {FileFormat::PDF, "pdf", "pdf", "PDF"});
@@ -161,7 +162,8 @@ const std::string& toSuffix(FileFormat format)
 bool canPreview(FileFormat format)
 {
   return (format == FileFormat::AST || format == FileFormat::CSG || format == FileFormat::PARAM ||
-          format == FileFormat::ECHO || format == FileFormat::TERM || format == FileFormat::PNG);
+          format == FileFormat::ECHO || format == FileFormat::TERM ||
+          format == FileFormat::CSGTREE || format == FileFormat::PNG);
 }
 
 bool is3D(FileFormat format)

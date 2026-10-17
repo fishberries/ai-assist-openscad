@@ -40,6 +40,7 @@ enum class FileFormat {
   CSG,
   AST,
   TERM,
+  CSGTREE,
   ECHO,
   PNG,
   PDF,
@@ -318,6 +319,9 @@ void export_amf(const std::shared_ptr<const Geometry>& geom, std::ostream& outpu
 void export_dxf(const std::shared_ptr<const Geometry>& geom, std::ostream& output);
 void export_svg(const std::shared_ptr<const Geometry>& geom, std::ostream& output,
                 const ExportInfo& exportInfo);
+// Exports the evaluated CSG term tree (per-leaf mesh + transform + colour, booleans
+// left unevaluated). See src/io/export_csgtree.cc for the format.
+void export_csgtree(const std::shared_ptr<class CSGNode>& root, std::ostream& output);
 void export_pov(const std::shared_ptr<const Geometry>& geom, std::ostream& output,
                 const ExportInfo& exportInfo);
 void export_pdf(const std::shared_ptr<const Geometry>& geom, std::ostream& output,

@@ -470,6 +470,17 @@ int do_export(const CommandLine& cmd, const RenderVariables& render_variables, F
         stream << root_raw_term->dump() << "\n";
       }
     });
+  } else if (export_format == FileFormat::CSGTREE) {
+    // Same pipeline as TERM - this is OpenSCAD's preview evaluation - but serialized
+    // with each leaf's geometry, transform and colour instead of just its label, so a
+    // consumer can render the preview without reimplementing the SCAD language.
+    // Exported BEFORE normalization on purpose; see src/io/export_csgtree.cc.
+    GeometryEvaluator geomevaluator(tree);
+    CSGTreeEvaluator csgRenderer(tree, &geomevaluator);
+    auto root_raw_term = csgRenderer.buildCSGTree(*root_node);
+    with_output(cmd.is_stdout, filename_str, [&root_raw_term](std::ostream& stream) {
+      export_csgtree(root_raw_term, stream);
+    });
   } else if (export_format == FileFormat::ECHO) {
     // echo -> don't need to evaluate any geometry
   } else {
